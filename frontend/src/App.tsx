@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { analyzeStock } from './services/api';
-import { StockAnalysisResponse } from './utils/types';
+import type { StockAnalysisResponse } from './utils/types';
 import StockAnalyzer from './components/StockAnalyzer';
 import './App.css';
 
 function App() {
-  const [analysis, setAnalysis] = useState<StockAnalysisResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [analysis, setAnalysis] = React.useState<StockAnalysisResponse | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const handleAnalyze = async (symbol: string) => {
     setLoading(true);

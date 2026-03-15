@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { StockAnalysisResponse } from '../utils/types';
-import { analyzeStock } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import type { StockAnalysisResponse } from '../utils/types';
+import CandlestickChart from './CandlestickChart';
+import IndicatorChart from './IndicatorChart';
 
 const StockAnalyzer: React.FC<{
   onAnalyze: (symbol: string) => Promise<void>;
@@ -9,6 +10,38 @@ const StockAnalyzer: React.FC<{
   error: string | null;
 }> = ({ onAnalyze, analysis, loading, error }) => {
   const [symbol, setSymbol] = useState('');
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [indicatorData, setIndicatorData] = useState<any[]>([]);
+
+  // Fetch chart data when analysis updates
+  useEffect(() => {
+    if (analysis && analysis.data?.chart) {
+      // Transform data for candlestick chart
+      const transformedChartData = analysis.data.chart.map((item: any) => ({
+        date: item.date,
+        open: item.open,
+        high: item.high,
+        low: item.low,
+        close: item.close,
+        volume: item.volume,
+      }));
+      setChartData(transformedChartData);
+      
+      // Transform data for indicator chart - simplified for now
+      // In a real app, we would calculate these per data point
+      const transformedIndicatorData = analysis.data.chart.map((item: any) => ({
+        date: item.date,
+        rsi: analysis.indicators?.RSI ?? null,
+        macd: analysis.indicators?.MACD ?? null,
+        signal: analysis.indicators?.Signal ?? null,
+        hist: (analysis.indicators?.MACD ?? 0) - (analysis.indicators?.Signal ?? 0),
+        bb_upper: analysis.indicators?.BB_upper ?? null,
+        bb_mid: analysis.indicators?.BB_mid ?? null,
+        bb_lower: analysis.indicators?.BB_lower ?? null,
+      }));
+      setIndicatorData(transformedIndicatorData);
+    }
+  }, [analysis]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,34 +99,18 @@ const StockAnalyzer: React.FC<{
             </div>
           </div>
 
-          <div className="indicators-section">
-            <h3>技术指标</h3>
-            <div className="indicators-grid">
-              <div className="indicator-item">
-                <span>MA5:</span> {analysis.indicators.MA5 !== null ? analysis.indicators.MA5.toFixed(2) : 'N/A'}
-              </div>
-              <div className="indicator-item">
-                <span>MA10:</span> {analysis.indicators.MA10 !== null ? analysis.indicators.MA10.toFixed(2) : 'N/A'}
-              </div>
-              <div className="indicator-item">
-                <span>MA20:</span> {analysis.indicators.MA20 !== null ? analysis.indicators.MA20.toFixed(2) : 'N/A'}
-              </div>
-              <div className="indicator-item">
-                <span>MA60:</span> {analysis.indicators.MA60 !== null ? analysis.indicators.MA60.toFixed(2) : 'N/A'}
-              </div>
-              <div className="indicator-item">
-                <span>RSI:</span> {analysis.indicators.RSI !== null ? analysis.indicators.RSI.toFixed(2) : 'N/A'}
-              </div>
-              <div className="indicator-item">
-                <span>MACD:</span> {analysis.indicators.MACD !== null ? analysis.indicators.MACD.toFixed(4) : 'N/A'}
-              </div>
-              <div className="indicator-item">
-                <span>布林上轨:</span> {analysis.indicators.BB_upper !== null ? analysis.indicators.BB_upper.toFixed(2) : 'N/A'}
-              </div>
-              <div className="indicator-item">
-                <span>布林下轨:</span> {analysis.indicators.BB_lower !== null ? analysis.indicators.BB_lower.toFixed(2) : 'N/A'}
-              </div>
-            </div>
+          <div className="charts-section">
+            <CandlestickChart 
+              data={chartData}
+              ma5={analysis.indicators?.MA5}
+              ma10={analysis.indicators?.MA10}
+              ma20={analysis.indicators?.MA20}
+              ma60={analysis.indicators?.MA60}
+            />
+            
+            <IndicatorChart 
+              data={indicatorData}
+            />
           </div>
 
           <div className="reasons-section">
