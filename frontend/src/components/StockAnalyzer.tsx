@@ -4,6 +4,7 @@ import CandlestickChart from './CandlestickChart';
 import IndicatorChart from './IndicatorChart';
 import StockSearch from './StockSearch';
 import AIAssistant from './AIAssistant';
+import PDFExportButton from './PDFExportButton';
 
 const StockAnalyzer: React.FC<{
   onAnalyze: (symbol: string) => Promise<void>;
@@ -129,6 +130,12 @@ const StockAnalyzer: React.FC<{
             <IndicatorChart 
               data={indicatorData}
             />
+            
+            {analysis && (
+              <PDFExportButton 
+                analysis={analysis}
+              />
+            )}
           </div>
 
           <div className="reasons-section">
