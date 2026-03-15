@@ -3,6 +3,7 @@ import type { StockAnalysisResponse } from '../utils/types';
 import CandlestickChart from './CandlestickChart';
 import IndicatorChart from './IndicatorChart';
 import StockSearch from './StockSearch';
+import AIAssistant from './AIAssistant';
 
 const StockAnalyzer: React.FC<{
   onAnalyze: (symbol: string) => Promise<void>;
@@ -13,6 +14,7 @@ const StockAnalyzer: React.FC<{
   const [symbol, setSymbol] = useState('');
   const [chartData, setChartData] = useState<any[]>([]);
   const [indicatorData, setIndicatorData] = useState<any[]>([]);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
 
   // A-share popular stocks for search dropdown
   const popularStocks = [
@@ -144,6 +146,24 @@ const StockAnalyzer: React.FC<{
         <div className="placeholder">
           <p>请输入股票代码或名称开始分析</p>
         </div>
+      )}
+
+      {(analysis || loading) && (
+        <AIAssistant
+          analysis={analysis}
+          show={showAIAssistant}
+          onClose={() => setShowAIAssistant(false)}
+        />
+      )}
+
+      {/* AI Assistant toggle button */}
+      {!loading && analysis && (
+        <button 
+          className="ai-toggle-btn"
+          onClick={() => setShowAIAssistant(!showAIAssistant)}
+        >
+          {showAIAssistant ? '关闭AI助手' : 'AI分析助手'}
+        </button>
       )}
     </div>
   );

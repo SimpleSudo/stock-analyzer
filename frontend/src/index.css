@@ -217,3 +217,96 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+/* AI Assistant Styles */
+.ai-assistant-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.ai-assistant-content {
+  background-color: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.ai-assistant-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.ai-assistant-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.ai-assistant-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #999;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-assistant-close:hover {
+  color: #666;
+}
+
+.ai-assistant-body {
+  padding: 20px;
+  line-height: 1.6;
+  color: #555;
+}
+
+.ai-assistant-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #eee;
+  text-align: center;
+}
+
+.ai-disclaimer {
+  font-size: 12px;
+  color: #999;
+  margin: 0;
+}
+
+.ai-toggle-btn {
+  margin-top: 16px;
+  padding: 8px 16px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.ai-toggle-btn:hover {
+  background-color: #45a049;
+}
+
+.ai-toggle-btn:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
