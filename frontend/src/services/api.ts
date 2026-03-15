@@ -5,7 +5,11 @@ const api = axios.create({
 });
 
 export const analyzeStock = async (symbol: string) => {
-  const response = await api.post('/api/analyze', { symbol });
+  // Ensure we're only dealing with A-shares (Chinese stocks)
+  // Remove any exchange prefixes if present
+  const cleanSymbol = symbol.replace(/^(sz|sh)/i, '').replace(/\.[a-z]+$/i, '');
+  
+  const response = await api.post('/api/analyze', { symbol: cleanSymbol });
   return response.data;
 };
 
