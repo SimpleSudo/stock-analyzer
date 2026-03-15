@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { StockAnalysisResponse } from '../utils/types';
 import CandlestickChart from './CandlestickChart';
 import IndicatorChart from './IndicatorChart';
+import StockSearch from './StockSearch';
 
 const StockAnalyzer: React.FC<{
   onAnalyze: (symbol: string) => Promise<void>;
@@ -12,6 +13,25 @@ const StockAnalyzer: React.FC<{
   const [symbol, setSymbol] = useState('');
   const [chartData, setChartData] = useState<any[]>([]);
   const [indicatorData, setIndicatorData] = useState<any[]>([]);
+
+  // A-share popular stocks for search dropdown
+  const popularStocks = [
+    { symbol: '000001', name: '平安银行' },
+    { symbol: '000002', name: '万科A' },
+    { symbol: '000858', name: '五粮液' },
+    { symbol: '600000', name: '浦发银行' },
+    { symbol: '600036', name: '招商银行' },
+    { symbol: '600519', name: '贵州茅台' },
+    { symbol: '600887', name: '伊利股份' },
+    { symbol: '601318', name: '中国平安' },
+    { symbol: '601398', name: '工商银行' },
+    { symbol: '601857', name: '中国石油' },
+    { symbol: '601988', name: '中国银行' },
+    { symbol: '000651', name: '格力电器' },
+    { symbol: '000858', name: '五粮液' },
+    { symbol: '002415', name: '海康威视' },
+    { symbol: '300059', name: '东方财富' },
+  ];
 
   // Fetch chart data when analysis updates
   useEffect(() => {
@@ -54,13 +74,9 @@ const StockAnalyzer: React.FC<{
     <div className="stock-analyzer">
       <form onSubmit={handleSubmit} className="input-form">
         <div className="input-group">
-          <input
-            type="text"
-            placeholder="输入股票代码或名称 (如 000001 或 平安银行)"
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-            disabled={loading}
-            className="stock-input"
+          <StockSearch
+            onSelect={setSymbol}
+            popularStocks={popularStocks}
           />
           <button type="submit" disabled={loading} className="analyze-btn">
             {loading ? '分析中...' : '开始分析'}
