@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { analyzeStock } from './services/api';
 import type { StockAnalysisResponse } from './utils/types';
-import StockAnalyzer from './components/StockAnalyzer';
 import './App.css';
+
+const StockAnalyzer = lazy(() => import('./components/StockAnalyzer'));
 
 function App() {
   const [analysis, setAnalysis] = React.useState<StockAnalysisResponse | null>(null);
@@ -29,12 +30,14 @@ function App() {
         <p>输入股票代码或名称，获取多维度AI分析与买入建议</p>
       </header>
       <main>
-        <StockAnalyzer 
-          onAnalyze={handleAnalyze} 
-          analysis={analysis} 
-          loading={loading} 
-          error={error} 
-        />
+        <Suspense fallback={<div>Loading...</div>}>
+          <StockAnalyzer 
+            onAnalyze={handleAnalyze} 
+            analysis={analysis} 
+            loading={loading} 
+            error={error} 
+          />
+        </Suspense>
       </main>
     </div>
   );
