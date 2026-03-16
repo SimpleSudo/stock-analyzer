@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { StockAnalysisResponse } from '../utils/types';
 import CandlestickChart from './CandlestickChart';
 import IndicatorChart from './IndicatorChart';
@@ -6,6 +6,8 @@ import StockSearch from './StockSearch';
 import AIAssistant from './AIAssistant';
 import PDFExportButton from './PDFExportButton';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
+
+// TODO: Consider adding lazy loading for heavy components to improve initial load time
 
 const StockAnalyzer: React.FC<{
   onAnalyze: (symbol: string) => Promise<void>;
@@ -67,12 +69,12 @@ const StockAnalyzer: React.FC<{
     }
   }, [analysis]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (symbol.trim()) {
       await onAnalyze(symbol.trim());
     }
-  };
+  }, [symbol, onAnalyze]);
 
   // Keyboard shortcuts configuration
   const shortcuts: { [key: string]: () => void } = {
