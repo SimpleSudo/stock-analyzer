@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import type { StockAnalysisResponse } from '../utils/types';
-import CandlestickChart from './CandlestickChart';
-import IndicatorChart from './IndicatorChart';
 import StockSearch from './StockSearch';
 import AIAssistant from './AIAssistant';
 import PDFExportButton from './PDFExportButton';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
-// TODO: Consider adding lazy loading for heavy components to improve initial load time
+const CandlestickChart = lazy(() => import('./CandlestickChart'));
+const IndicatorChart = lazy(() => import('./IndicatorChart'));
 
 const StockAnalyzer: React.FC<{
   onAnalyze: (symbol: string) => Promise<void>;
@@ -19,6 +18,9 @@ const StockAnalyzer: React.FC<{
   const [chartData, setChartData] = useState<any[]>([]);
   const [indicatorData, setIndicatorData] = useState<any[]>([]);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
+  // New state for debate data (agent outputs)
+  const [debateData, setDebateData] = useState<any>(null);
+  const [debateLoading, setDebateLoading] = useState(false);
 
   // A-share popular stocks for search dropdown
   const popularStocks = [
@@ -66,6 +68,37 @@ const StockAnalyzer: React.FC<{
         bb_lower: analysis.indicators?.BB_lower ?? null,
       }));
       setIndicatorData(transformedIndicatorData);
+    }
+  }, [analysis]);
+
+  // Fetch debate data when analysis changes
+  useEffect(() => {
+    if (analysis && analysis.symbol) {
+      const fetchDebate = async () => {
+        setDebateLoading(true);
+        try {
+          const response = await fetch('/api/analyze/debate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ symbol: analysis.symbol }),
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const data = await response.json();
+          setDebateData(data);
+        } catch (err) {
+          console.error('Failed to fetch debate data:', err);
+          // We don't set error in UI for now, just log
+        } finally {
+          setDebateLoading(false);
+        }
+      };
+      fetchDebate();
+    } else {
+      setDebateData(null);
     }
   }, [analysis]);
 
@@ -162,17 +195,21 @@ const StockAnalyzer: React.FC<{
           </div>
 
           <div className="charts-section">
-            <CandlestickChart 
-              data={chartData}
-              ma5={analysis.indicators?.MA5}
-              ma10={analysis.indicators?.MA10}
-              ma20={analysis.indicators?.MA20}
-              ma60={analysis.indicators?.MA60}
-            />
+            <Suspense fallback={<div>Loading chart...</div>}>
+              <CandlestickChart 
+                data={chartData}
+                ma5={analysis.indicators?.MA5}
+                ma10={analysis.indicators?.MA10}
+                ma20={analysis.indicators?.MA20}
+                ma60={analysis.indicators?.MA60}
+              />
+            </Suspense>
             
-            <IndicatorChart 
-              data={indicatorData}
-            />
+            <Suspense fallback={<div>Loading indicators...</div>}>
+              <IndicatorChart 
+                data={indicatorData}
+              />
+            </Suspense>
             
             {analysis && (
               <PDFExportButton 
@@ -189,6 +226,38 @@ const StockAnalyzer: React.FC<{
               ))}
             </ul>
           </div>
+
+          {/* Debate section: show each agent's output */}
+          {debateData && debateData.agent_outputs && (
+            <div className="debate-section">
+              <h3>智能体辩论过程</h3>
+              <div className="debate-grid">
+                {Object.entries(debateData.agent_outputs).map(([agentName, agentOutput]: [string, any]) => (
+                  <div key={agentName} className="debate-card">
+                    <h4>{agentName}</h4>
+                    <p><strong>信号:</strong> {agentOutput.signal}</p>
+                    <p><strong>评分:</strong> {agentOutput.score}</p>
+                    <p><strong>理由:</strong></p>
+                    <ul>
+                      {agentOutput.reasons.map((reason: string, idx: number) => (
+                        <li key={idx}>{reason}</li>
+                      ))}
+                    </ul>
+                    {agentOutput.indicators && Object.keys(agentOutput.indicators).length > 0 && (
+                      <div className="indicators">
+                        <strong>关键指标:</strong>
+                        {Object.entries(agentOutput.indicators).map(([key, value]: [string, any]) => (
+                          <span key={key} className="indicator-item">
+                            {key}: {value}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
