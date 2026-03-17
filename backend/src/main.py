@@ -108,5 +108,63 @@ async def analyze_committee(request: StockRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/analyze/similar")
+async def analyze_similar(request: StockRequest):
+    """
+    Get similar historical analyses for a stock based on current technical/fundamental analysis.
+    Returns list of similar past analyses with their outcomes.
+    """
+    try:
+        # Use technical agent to get current analysis (could also use committee)
+        current = technical_agent.analyze(request.symbol.strip())
+        if "error" in current and current["error"]:
+            raise HTTPException(status_code=400, detail=current["error"])
+        # Retrieve similar analyses from vector store
+        similar = technical_agent.retrieve_similar_analyses(request.symbol.strip(), current, top_k=5)
+        # Format response
+        return {
+            "symbol": request.symbol.strip(),
+            "current_analysis": {
+                "signal": current.get("signal"),
+                "score": current.get("score"),
+                "reasons": current.get("reasons")
+            },
+            "similar_analyses": [
+                {
+                    "date": m.get("timestamp"),
+                    "signal": m.get("data", {}).get("signal"),
+                    "score": m.get("data", {}).get("score"),
+                    "reasons": m.get("data", {}).get("reasons"),
+                    "symbol": m.get("symbol")
+                }
+                for m in similar
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/analyze/debate")
+async def analyze_debate(request: StockRequest):
+    """
+    Get analysis from each agent in the committee for transparency (debate view).
+    Returns each agent's raw output.
+    """
+    try:
+        # We need to get the raw agent outputs from the committee.
+        # Let's modify the committee to have a method that returns agent outputs without combining.
+        # For now, we can call each agent individually.
+        technical_result = technical_agent.analyze(request.symbol.strip())
+        fundamental_result = fundamental_agent.analyze(request.symbol.strip())
+        # If you have more agents, add them here.
+        return {
+            "symbol": request.symbol.strip(),
+            "agent_outputs": {
+                "Technical": technical_result,
+                "Fundamental": fundamental_result
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
