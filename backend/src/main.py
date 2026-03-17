@@ -48,10 +48,11 @@ async def health_check():
 toolkit = Toolkit()
 technical_agent = TechnicalAgent(toolkit=toolkit)
 fundamental_agent = FundamentalAgent(toolkit=toolkit)
+sentiment_agent = SentimentAgent(toolkit=toolkit)  # New sentiment agent
 # Example weights: you can adjust these as needed
 committee = DecisionCommittee(
-    agents=[technical_agent, fundamental_agent],
-    weights={"Technical": 0.6, "Fundamental": 0.4}  # Example: technical slightly more important
+    agents=[technical_agent, fundamental_agent, sentiment_agent],
+    weights={"Technical": 0.5, "Fundamental": 0.3, "Sentiment": 0.2}  # Example weights
 )
 
 # Initialize backtest engine (singleton)
