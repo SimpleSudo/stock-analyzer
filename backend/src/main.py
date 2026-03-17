@@ -5,6 +5,7 @@ from .stock_analysis import get_analysis
 from agents.technical_agent import TechnicalAgent
 from agents.fundamental_agent import FundamentalAgent
 from agents.decision_committee import DecisionCommittee
+from tools.toolkit import Toolkit
 import uvicorn
 
 app = FastAPI(title="A股分析系统 API", version="1.0.0")
@@ -42,9 +43,10 @@ async def analyze_stock(request: StockRequest):
 async def health_check():
     return {"status": "healthy"}
 
-# Initialize agents and committee (singleton)
-technical_agent = TechnicalAgent()
-fundamental_agent = FundamentalAgent()
+# Initialize toolkit and agents (singleton)
+toolkit = Toolkit()
+technical_agent = TechnicalAgent(toolkit=toolkit)
+fundamental_agent = FundamentalAgent(toolkit=toolkit)
 # Example weights: you can adjust these as needed
 committee = DecisionCommittee(
     agents=[technical_agent, fundamental_agent],

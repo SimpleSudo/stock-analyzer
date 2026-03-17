@@ -1,9 +1,10 @@
 from .base_agent import BaseAgent
 from src.stock_analysis import get_analysis
+import time
 
 class TechnicalAgent(BaseAgent):
-    def __init__(self, llm=None):
-        super().__init__("Technical", llm)
+    def __init__(self, llm=None, toolkit=None):
+        super().__init__("Technical", llm, toolkit)
 
     def analyze(self, symbol: str) -> dict:
         """
@@ -25,7 +26,7 @@ class TechnicalAgent(BaseAgent):
             }
         
         # Extract the relevant parts for the agent's output
-        return {
+        analysis_output = {
             "agent": self.name,
             "score": result["score"],
             "signal": result["signal"],
@@ -33,3 +34,14 @@ class TechnicalAgent(BaseAgent):
             "indicators": result["indicators"],
             "data": result["data"]  # Optional: include raw data if needed by others
         }
+        
+        # Store this analysis in vector store for future similarity search
+        try:
+            self.store_analysis(symbol, analysis_output)
+        except Exception as e:
+            print(f"Warning: Failed to store analysis in vector store: {e}")
+        
+        # Optionally retrieve similar analyses for context (could be used to adjust confidence)
+        # For now, we just store; retrieval can be added later if needed
+        
+        return analysis_output
