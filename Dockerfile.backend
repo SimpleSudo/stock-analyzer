@@ -2,6 +2,16 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# 复制所有后端业务目录
 COPY backend/src ./src
+COPY backend/agents ./agents
+COPY backend/backtest ./backtest
+COPY backend/data ./data
+COPY backend/llm ./llm
+COPY backend/memory ./memory
+COPY backend/tools ./tools
+COPY backend/plugins ./plugins
+COPY backend/utils ./utils
+COPY backend/__init__.py ./
 EXPOSE 8000
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

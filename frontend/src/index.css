@@ -1,46 +1,101 @@
+/* ===== CSS 变量：亮色/暗色主题 ===== */
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-card: #ffffff;
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --border-color: #eeeeee;
+  --shadow: 0 2px 10px rgba(0,0,0,0.08);
+  --header-bg: #282c34;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #2d2d2d;
+  --bg-card: #252525;
+  --text-primary: #e0e0e0;
+  --text-secondary: #aaaaaa;
+  --border-color: #3a3a3a;
+  --shadow: 0 2px 10px rgba(0,0,0,0.3);
+  --header-bg: #1a1a2e;
+}
+
+/* ===== 全局 ===== */
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f5f5f5;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: background-color 0.2s, color 0.2s;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-
+/* ===== 应用容器 ===== */
 .App {
   text-align: center;
+  min-height: 100vh;
 }
 
+/* ===== 顶部导航 ===== */
 .App-header {
-  background-color: #282c34;
-  padding: 20px;
+  background-color: var(--header-bg);
+  padding: 16px 24px;
   color: white;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 860px;
+  margin: 0 auto;
 }
 
 .App-header h1 {
   margin: 0;
+  font-size: 22px;
 }
 
 .App-header p {
-  margin: 10px 0 0;
-  opacity: 0.8;
+  margin: 6px 0 0;
+  opacity: 0.75;
+  font-size: 14px;
 }
 
+/* 主题切换按钮 */
+.theme-toggle {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.theme-toggle:hover {
+  background: rgba(255,255,255,0.22);
+}
+
+/* ===== 主内容区 ===== */
 .stock-analyzer {
-  max-width: 800px;
-  margin: 20px auto;
-  padding: 20px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  max-width: 860px;
+  margin: 24px auto;
+  padding: 24px;
+  background: var(--bg-card);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  text-align: left;
 }
 
+/* ===== 搜索表单 ===== */
 .input-form {
   display: flex;
   gap: 10px;
@@ -51,174 +106,252 @@ code {
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .stock-input {
-  padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 16px;
-  width: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 15px;
+  width: 220px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.stock-input:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26,115,232,0.2);
 }
 
 .analyze-btn {
-  padding: 12px 24px;
-  background-color: #4caf50;
+  padding: 10px 24px;
+  background-color: #1a73e8;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 15px;
+  font-weight: 500;
+  transition: background 0.2s;
+  white-space: nowrap;
 }
-
 .analyze-btn:hover:not(:disabled) {
-  background-color: #45a049;
+  background-color: #1558b0;
 }
-
 .analyze-btn:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
 }
 
+/* ===== 错误提示 ===== */
 .error-message {
   background-color: #ffebee;
   color: #c62828;
-  padding: 12px;
-  border-radius: 4px;
-  margin-bottom: 20px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  border-left: 4px solid #c62828;
+  font-size: 14px;
+}
+[data-theme="dark"] .error-message {
+  background-color: #3b1a1a;
+  color: #ff8a80;
+  border-left-color: #ff5252;
 }
 
+/* ===== 占位提示 ===== */
 .placeholder {
   text-align: center;
-  color: #666;
-  padding: 40px;
+  color: var(--text-secondary);
+  padding: 48px 20px;
 }
 
+/* ===== 分析结果 ===== */
 .analysis-result {
-  margin-top: 20px;
+  margin-top: 16px;
 }
 
 .result-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
+.result-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--text-primary);
+}
+
+/* 信号徽章 */
 .signal-badge {
-  padding: 4px 12px;
-  border-radius: 12px;
+  padding: 5px 14px;
+  border-radius: 16px;
   font-size: 14px;
   font-weight: bold;
 }
-
 .signal-badge.买入 {
-  background-color: #e8f5e8;
-  color: #2e7d32;
-}
-
-.signal-badge.卖出 {
   background-color: #ffebee;
   color: #c62828;
 }
-
+.signal-badge.卖出 {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
 .signal-badge.观望 {
   background-color: #fff3e0;
-  color: #ef6c00;
+  color: #e65100;
 }
 
+/* ===== 指标卡片 ===== */
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
   margin-bottom: 20px;
 }
 
 .metric-card {
   text-align: center;
   padding: 16px;
-  border: 1px solid #eee;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
+  background: var(--bg-secondary);
 }
 
 .metric-card h3 {
   margin: 0 0 8px 0;
-  color: #666;
-  font-size: 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: normal;
 }
 
 .metric-card .price {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: bold;
   margin: 8px 0;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .metric-card .change {
-  font-size: 16px;
+  font-size: 15px;
   margin: 4px 0;
 }
 
 .metric-card .score {
-  font-size: 32px;
+  font-size: 30px;
   font-weight: bold;
   margin: 8px 0;
 }
 
 .metric-card .score-label {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .metric-card .volume {
-  font-size: 16px;
+  font-size: 15px;
   margin: 8px 0;
-  color: #666;
+  color: var(--text-secondary);
 }
 
+/* ===== 图表区 ===== */
 .charts-section {
-  margin: 20px 0;
+  margin: 16px 0;
 }
 
+/* ===== 分析依据 ===== */
 .reasons-section {
   margin-top: 20px;
 }
 
 .reasons-section h3 {
   margin-top: 0;
+  color: var(--text-primary);
+  font-size: 16px;
 }
 
 .reasons-list {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 
 .reasons-list li {
   padding: 8px 0;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 14px;
 }
 
 .reasons-list li:last-child {
   border-bottom: none;
 }
 
-/* Responsive */
-@media (max-width: 600px) {
-  .input-form {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .stock-input {
-    width: 100%;
-  }
-  
-  .metrics-grid {
-    grid-template-columns: 1fr;
-  }
+/* ===== Multi-Agent 辩论区 ===== */
+.debate-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color);
 }
 
-/* AI Assistant Styles */
+.debate-section h3 {
+  margin-top: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.debate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.debate-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.debate-card h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #1a73e8;
+}
+
+.debate-card p {
+  margin: 4px 0;
+}
+
+.debate-card ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.debate-card li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.indicator-item {
+  display: inline-block;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin: 2px 4px 2px 0;
+  font-size: 12px;
+}
+
+/* ===== AI 助手 ===== */
 .ai-assistant-backdrop {
   position: fixed;
   top: 0;
@@ -233,13 +366,13 @@ code {
 }
 
 .ai-assistant-content {
-  background-color: white;
+  background-color: var(--bg-card);
   border-radius: 12px;
   width: 90%;
-  max-width: 400px;
+  max-width: 440px;
   max-height: 80vh;
   overflow-y: auto;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
 }
 
 .ai-assistant-header {
@@ -247,12 +380,12 @@ code {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .ai-assistant-header h3 {
   margin: 0;
-  color: #333;
+  color: var(--text-primary);
   font-size: 18px;
 }
 
@@ -261,52 +394,78 @@ code {
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #999;
+  color: var(--text-secondary);
   width: 30px;
   height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-
 .ai-assistant-close:hover {
-  color: #666;
+  color: var(--text-primary);
 }
 
 .ai-assistant-body {
   padding: 20px;
-  line-height: 1.6;
-  color: #555;
+  line-height: 1.7;
+  color: var(--text-primary);
+  font-size: 14px;
 }
 
 .ai-assistant-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #eee;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
   text-align: center;
 }
 
 .ai-disclaimer {
-  font-size: 12px;
-  color: #999;
+  font-size: 11px;
+  color: var(--text-secondary);
   margin: 0;
 }
 
 .ai-toggle-btn {
   margin-top: 16px;
-  padding: 8px 16px;
-  background-color: #4caf50;
+  padding: 8px 18px;
+  background-color: #1a73e8;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
+  transition: background 0.2s;
 }
-
 .ai-toggle-btn:hover {
-  background-color: #45a049;
+  background-color: #1558b0;
 }
 
-.ai-toggle-btn:disabled {
-  background-color: #cccccc;
-  cursor: not-allowed;
+/* ===== 响应式 ===== */
+@media (max-width: 640px) {
+  .stock-analyzer {
+    margin: 12px;
+    padding: 16px;
+  }
+
+  .input-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stock-input {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .analyze-btn {
+    width: 100%;
+  }
+
+  .metrics-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .header-content {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
 }

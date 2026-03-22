@@ -1,0 +1,45 @@
+# 环境变量（含 API Key，绝不提交）
+.env
+.env.local
+
+# Python 虚拟环境
+venv/
+.venv/
+*.venv
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 向量数据库（运行时生成）
+vector_store.index
+vector_store_metadata.json
+backend/vector_store.index
+backend/vector_store_metadata.json
+
+# 日志文件
+*.log
+server.log
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# 测试输出
+test_output.log
+test_results_*.json
+continuous_test.log
+simple_test.py
+test_loop.py
+
+# Node.js
+node_modules/
+frontend/node_modules/
+
+# 编译输出
+dist/
+build/
+frontend/dist/

@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
-import type { StockAnalysisResponse } from '../utils/types';
+import type { StockAnalysisResponse, ChartPointWithIndicators } from '../utils/types';
 import StockSearch from './StockSearch';
 import AIAssistant from './AIAssistant';
 import PDFExportButton from './PDFExportButton';
+import PriceTargetCard from './PriceTargetCard';
+import IndustryCompareCard from './IndustryCompareCard';
+import CapitalFlowChart from './CapitalFlowChart';
+import AIReportPanel from './AIReportPanel';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 
 const CandlestickChart = lazy(() => import('./CandlestickChart'));
@@ -15,18 +19,19 @@ const StockAnalyzer: React.FC<{
   error: string | null;
 }> = ({ onAnalyze, analysis, loading, error }) => {
   const [symbol, setSymbol] = useState('');
-  const [chartData, setChartData] = useState<any[]>([]);
-  const [indicatorData, setIndicatorData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<ChartPointWithIndicators[]>([]);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
-  // New state for debate data (agent outputs)
   const [debateData, setDebateData] = useState<any>(null);
   const [debateLoading, setDebateLoading] = useState(false);
 
-  // A-share popular stocks for search dropdown
+  // A 股热门股票列表
   const popularStocks = [
     { symbol: '000001', name: '平安银行' },
     { symbol: '000002', name: '万科A' },
+    { symbol: '000651', name: '格力电器' },
     { symbol: '000858', name: '五粮液' },
+    { symbol: '002415', name: '海康威视' },
+    { symbol: '300059', name: '东方财富' },
     { symbol: '600000', name: '浦发银行' },
     { symbol: '600036', name: '招商银行' },
     { symbol: '600519', name: '贵州茅台' },
@@ -35,63 +40,40 @@ const StockAnalyzer: React.FC<{
     { symbol: '601398', name: '工商银行' },
     { symbol: '601857', name: '中国石油' },
     { symbol: '601988', name: '中国银行' },
-    { symbol: '000651', name: '格力电器' },
-    { symbol: '000858', name: '五粮液' },
-    { symbol: '002415', name: '海康威视' },
-    { symbol: '300059', name: '东方财富' },
   ];
 
-  // Fetch chart data when analysis updates
+  // 当 analysis 更新时，使用 chart_with_indicators（含历史指标序列）
   useEffect(() => {
-    if (analysis && analysis.data?.chart) {
-      // Transform data for candlestick chart
-      const transformedChartData = analysis.data.chart.map((item: any) => ({
-        date: item.date,
-        open: item.open,
-        high: item.high,
-        low: item.low,
-        close: item.close,
-        volume: item.volume,
-      }));
-      setChartData(transformedChartData);
-      
-      // Transform data for indicator chart - simplified for now
-      // In a real app, we would calculate these per data point
-      const transformedIndicatorData = analysis.data.chart.map((item: any) => ({
-        date: item.date,
-        rsi: analysis.indicators?.RSI ?? null,
-        macd: analysis.indicators?.MACD ?? null,
-        signal: analysis.indicators?.Signal ?? null,
-        hist: (analysis.indicators?.MACD ?? 0) - (analysis.indicators?.Signal ?? 0),
-        bb_upper: analysis.indicators?.BB_upper ?? null,
-        bb_mid: analysis.indicators?.BB_mid ?? null,
-        bb_lower: analysis.indicators?.BB_lower ?? null,
-      }));
-      setIndicatorData(transformedIndicatorData);
+    if (analysis?.data?.chart_with_indicators) {
+      setChartData(analysis.data.chart_with_indicators);
+    } else if (analysis?.data?.chart) {
+      setChartData(
+        analysis.data.chart.map(item => ({
+          ...item,
+          ma5: null, ma10: null, ma20: null, ma60: null,
+          rsi: null, macd: null, signal: null, hist: null,
+          bb_upper: null, bb_mid: null, bb_lower: null,
+        })),
+      );
     }
   }, [analysis]);
 
-  // Fetch debate data when analysis changes
+  // 获取 debate（多 Agent 辩论）数据
   useEffect(() => {
-    if (analysis && analysis.symbol) {
+    if (analysis?.symbol) {
       const fetchDebate = async () => {
         setDebateLoading(true);
         try {
           const response = await fetch('/api/analyze/debate', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ symbol: analysis.symbol }),
           });
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
           const data = await response.json();
           setDebateData(data);
         } catch (err) {
-          console.error('Failed to fetch debate data:', err);
-          // We don't set error in UI for now, just log
+          console.error('获取 debate 数据失败:', err);
         } finally {
           setDebateLoading(false);
         }
@@ -102,124 +84,165 @@ const StockAnalyzer: React.FC<{
     }
   }, [analysis]);
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (symbol.trim()) {
-      await onAnalyze(symbol.trim());
-    }
-  }, [symbol, onAnalyze]);
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (symbol.trim()) {
+        await onAnalyze(symbol.trim());
+      }
+    },
+    [symbol, onAnalyze],
+  );
 
-  // Keyboard shortcuts configuration
+  // 键盘快捷键
   const shortcuts: { [key: string]: () => void } = {
-    'enter': () => {
-      // Trigger form submit when Enter is pressed in search
-      // This is handled naturally by the form
-    },
-    'ctrl+l': () => {
-      // Focus on search input - we can't directly focus without ref, but we can select all text if input exists
-      // For simplicity, we'll just note the intent; actual focus would require a ref
-      console.log('Focus search shortcut triggered (would focus input if ref available)');
-    },
-    'ctrl+k': () => {
-      // Toggle AI assistant
-      setShowAIAssistant(!showAIAssistant);
-    },
+    'ctrl+k': () => setShowAIAssistant(prev => !prev),
     'ctrl+p': () => {
-      // Export PDF if analysis exists
       if (analysis) {
-        // Find and click the PDF export button
-        const pdfButton = document.querySelector('.pdf-export-btn');
-        if (pdfButton) {
-          (pdfButton as HTMLElement).click();
-        }
+        const btn = document.querySelector<HTMLElement>('.pdf-export-btn');
+        btn?.click();
       }
     },
-    'ctrl+shift+c': () => {
-      // Clear search
-      setSymbol('');
-      // Note: focusing would require ref, omitted for simplicity
+    'ctrl+shift+c': () => setSymbol(''),
+    escape: () => {
+      if (showAIAssistant) setShowAIAssistant(false);
     },
-    'escape': () => {
-      // Close AI assistant if open
-      if (showAIAssistant) {
-        setShowAIAssistant(false);
-      }
-    }
   };
-
   useKeyboardShortcuts(shortcuts, true);
+
+  // 信号徽章颜色
+  const signalClass = analysis?.signal?.includes('买入') ? '买入'
+    : analysis?.signal?.includes('卖出') ? '卖出'
+    : '观望';
 
   return (
     <div className="stock-analyzer">
       <form onSubmit={handleSubmit} className="input-form">
         <div className="input-group">
           <StockSearch
+            value={symbol}
+            onChange={setSymbol}
             onSelect={setSymbol}
             popularStocks={popularStocks}
           />
-          <button type="submit" disabled={loading} className="analyze-btn">
+          <button type="submit" disabled={loading || !symbol.trim()} className="analyze-btn">
             {loading ? '分析中...' : '开始分析'}
           </button>
         </div>
       </form>
 
-      {error && <div className="error-message">{error}</div>}
+      {error && <div className="error-message">⚠️ {error}</div>}
 
       {analysis && (
         <div className="analysis-result">
           <div className="result-header">
-            <h2>{analysis.symbol} 分析结果</h2>
-            <div className="signal-badge">{analysis.signal}</div>
+            <h2>
+              {analysis.name ? `${analysis.name}（${analysis.symbol}）` : analysis.symbol} 分析结果
+            </h2>
+            <div className={`signal-badge ${signalClass}`}>{analysis.signal}</div>
           </div>
+
+          {/* 数据来源标注 */}
+          {analysis.data?.data_source && (
+            <p style={{ fontSize: '12px', color: '#999', margin: '4px 0 12px', textAlign: 'right' }}>
+              数据来源：{analysis.data.data_source}（前复权）
+            </p>
+          )}
 
           <div className="metrics-grid">
             <div className="metric-card">
               <h3>最新价</h3>
               <p className="price">{analysis.data.latest.price.toFixed(2)}</p>
-              <p className="change">
+              <p className="change" style={{ color: analysis.data.latest.change_pct >= 0 ? '#ef5350' : '#26a69a' }}>
                 {analysis.data.latest.change_pct >= 0 ? '+' : ''}
                 {analysis.data.latest.change_pct.toFixed(2)}%
               </p>
             </div>
 
             <div className="metric-card">
-              <h3>评分</h3>
-              <p className="score">{analysis.score}</p>
-              <p className="score-label">(-10 ~ +10)</p>
+              <h3>技术评分</h3>
+              <p className="score" style={{ color: analysis.score > 0 ? '#ef5350' : analysis.score < 0 ? '#26a69a' : '#999' }}>
+                {analysis.score > 0 ? `+${analysis.score}` : analysis.score}
+              </p>
+              <p className="score-label">技术信号</p>
             </div>
 
             <div className="metric-card">
               <h3>成交量</h3>
               <p className="volume">{analysis.data.latest.volume.toLocaleString()}</p>
             </div>
-          </div>
 
-          <div className="charts-section">
-            <Suspense fallback={<div>Loading chart...</div>}>
-              <CandlestickChart 
-                data={chartData}
-                ma5={analysis.indicators?.MA5}
-                ma10={analysis.indicators?.MA10}
-                ma20={analysis.indicators?.MA20}
-                ma60={analysis.indicators?.MA60}
-              />
-            </Suspense>
-            
-            <Suspense fallback={<div>Loading indicators...</div>}>
-              <IndicatorChart 
-                data={indicatorData}
-              />
-            </Suspense>
-            
-            {analysis && (
-              <PDFExportButton 
-                analysis={analysis}
-              />
+            {/* 基本面快速概览 */}
+            {analysis.fundamental && (
+              <>
+                {analysis.fundamental.pe != null && (
+                  <div className="metric-card">
+                    <h3>PE(TTM)</h3>
+                    <p className="price" style={{ fontSize: '22px' }}>{analysis.fundamental.pe.toFixed(1)}</p>
+                  </div>
+                )}
+                {analysis.fundamental.pb != null && (
+                  <div className="metric-card">
+                    <h3>PB</h3>
+                    <p className="price" style={{ fontSize: '22px' }}>{analysis.fundamental.pb.toFixed(2)}</p>
+                  </div>
+                )}
+                {analysis.fundamental.roe != null && (
+                  <div className="metric-card">
+                    <h3>ROE</h3>
+                    <p className="price" style={{ fontSize: '22px', color: analysis.fundamental.roe > 15 ? '#26a69a' : undefined }}>
+                      {analysis.fundamental.roe.toFixed(1)}%
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
+          {/* ── K线图 + 技术指标图 ── */}
+          <div className="charts-section">
+            <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center' }}>📊 加载 K 线图...</div>}>
+              <CandlestickChart data={chartData} />
+            </Suspense>
+
+            <Suspense fallback={<div style={{ padding: '20px', textAlign: 'center' }}>📈 加载指标图...</div>}>
+              <IndicatorChart data={chartData} />
+            </Suspense>
+
+            <PDFExportButton analysis={analysis} />
+          </div>
+
+          {/* ── 价格目标 ── */}
+          {analysis.price_targets && (
+            <div className="metrics-grid" style={{ marginTop: '16px' }}>
+              <PriceTargetCard priceTargets={analysis.price_targets} />
+            </div>
+          )}
+
+          {/* ── 行业对比 ── */}
+          {analysis.industry && (
+            <div className="metrics-grid" style={{ marginTop: '16px' }}>
+              <IndustryCompareCard industry={analysis.industry} fundamental={analysis.fundamental} />
+            </div>
+          )}
+
+          {/* ── 资金流向 ── */}
+          {analysis.capital_flow && (
+            <div className="metrics-grid" style={{ marginTop: '16px' }}>
+              <CapitalFlowChart capitalFlow={analysis.capital_flow} />
+            </div>
+          )}
+
+          {/* ── AI 分析报告 ── */}
+          {analysis.ai_report && (
+            <div className="metrics-grid" style={{ marginTop: '16px' }}>
+              <AIReportPanel report={analysis.ai_report} />
+            </div>
+          )}
+
+          {/* ── 技术分析依据 ── */}
           <div className="reasons-section">
-            <h3>分析依据</h3>
+            <h3>📋 技术分析依据</h3>
             <ul className="reasons-list">
               {analysis.reasons.map((reason, index) => (
                 <li key={index}>{reason}</li>
@@ -227,32 +250,38 @@ const StockAnalyzer: React.FC<{
             </ul>
           </div>
 
-          {/* Debate section: show each agent's output */}
-          {debateData && debateData.agent_outputs && (
+          {/* ── Multi-Agent 辩论区 ── */}
+          {debateData?.agent_outputs && (
             <div className="debate-section">
-              <h3>智能体辩论过程</h3>
+              <h3>🤖 智能体辩论过程</h3>
+              {debateLoading && <p style={{ color: '#999' }}>加载中...</p>}
               <div className="debate-grid">
                 {Object.entries(debateData.agent_outputs).map(([agentName, agentOutput]: [string, any]) => (
                   <div key={agentName} className="debate-card">
-                    <h4>{agentName}</h4>
-                    <p><strong>信号:</strong> {agentOutput.signal}</p>
-                    <p><strong>评分:</strong> {agentOutput.score}</p>
-                    <p><strong>理由:</strong></p>
-                    <ul>
-                      {agentOutput.reasons.map((reason: string, idx: number) => (
-                        <li key={idx}>{reason}</li>
-                      ))}
-                    </ul>
+                    <h4>{agentName} Agent</h4>
+                    <p>
+                      <strong>信号：</strong>
+                      <span style={{ color: agentOutput.signal?.includes('买入') ? '#ef5350' : agentOutput.signal?.includes('卖出') ? '#26a69a' : '#999' }}>
+                        {agentOutput.signal}
+                      </span>
+                    </p>
+                    <p><strong>评分：</strong>{agentOutput.score}</p>
                     {agentOutput.indicators && Object.keys(agentOutput.indicators).length > 0 && (
-                      <div className="indicators">
-                        <strong>关键指标:</strong>
-                        {Object.entries(agentOutput.indicators).map(([key, value]: [string, any]) => (
-                          <span key={key} className="indicator-item">
-                            {key}: {value}
-                          </span>
+                      <p>
+                        <strong>关键指标：</strong>
+                        {Object.entries(agentOutput.indicators).map(([k, v]: [string, any]) => (
+                          <span key={k} className="indicator-item">{k}: {v}</span>
                         ))}
-                      </div>
+                      </p>
                     )}
+                    <details>
+                      <summary style={{ cursor: 'pointer', color: '#666' }}>查看分析理由</summary>
+                      <ul>
+                        {agentOutput.reasons?.map((r: string, i: number) => (
+                          <li key={i}>{r}</li>
+                        ))}
+                      </ul>
+                    </details>
                   </div>
                 ))}
               </div>
@@ -263,7 +292,8 @@ const StockAnalyzer: React.FC<{
 
       {!analysis && !loading && !error && (
         <div className="placeholder">
-          <p>请输入股票代码或名称开始分析</p>
+          <p>🔍 请输入股票代码或名称开始分析</p>
+          <p style={{ fontSize: '12px', color: '#999' }}>支持代码搜索（如 000001）或名称搜索（如 平安银行）</p>
         </div>
       )}
 
@@ -275,13 +305,13 @@ const StockAnalyzer: React.FC<{
         />
       )}
 
-      {/* AI Assistant toggle button */}
       {!loading && analysis && (
-        <button 
+        <button
           className="ai-toggle-btn"
-          onClick={() => setShowAIAssistant(!showAIAssistant)}
+          onClick={() => setShowAIAssistant(prev => !prev)}
+          title="快捷键：Ctrl+K"
         >
-          {showAIAssistant ? '关闭AI助手' : 'AI分析助手'}
+          {showAIAssistant ? '关闭 AI 助手' : '🤖 AI 分析助手'}
         </button>
       )}
     </div>
