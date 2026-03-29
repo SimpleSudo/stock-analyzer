@@ -8,7 +8,7 @@ export interface ChartPoint {
 }
 
 export interface ChartPointWithIndicators extends ChartPoint {
-  // 均线（每个历史数据点都有值）
+  // 均线
   ma5: number | null;
   ma10: number | null;
   ma20: number | null;
@@ -23,6 +23,16 @@ export interface ChartPointWithIndicators extends ChartPoint {
   bb_upper: number | null;
   bb_mid: number | null;
   bb_lower: number | null;
+  // KDJ
+  kdj_k: number | null;
+  kdj_d: number | null;
+  kdj_j: number | null;
+  // WR
+  wr: number | null;
+  // OBV
+  obv: number | null;
+  // ATR
+  atr: number | null;
 }
 
 export interface StockData {
@@ -35,7 +45,7 @@ export interface StockData {
   };
   chart: ChartPoint[];
   chart_with_indicators: ChartPointWithIndicators[];
-  data_source: string;  // "AKShare" | "Tushare"
+  data_source: string;
 }
 
 export interface Indicators {
@@ -51,7 +61,7 @@ export interface Indicators {
   BB_lower: number | null;
 }
 
-// ── 价格目标 ─────────────────────────────────────────────────────────────────
+// ── 价格目标 ─────────────────────────────────────────────
 
 export interface PriceTimeframe {
   buy_zone: [number, number];
@@ -70,7 +80,7 @@ export interface PriceTargets {
   long_term: PriceTimeframe;
 }
 
-// ── 行业对比 ─────────────────────────────────────────────────────────────────
+// ── 行业对比 ─────────────────────────────────────────────
 
 export interface IndustryComparison {
   industry_name: string;
@@ -86,7 +96,7 @@ export interface IndustryComparison {
   valuation_verdict: string;
 }
 
-// ── 资金流向 ─────────────────────────────────────────────────────────────────
+// ── 资金流向 ─────────────────────────────────────────────
 
 export interface CapitalFlowPoint {
   date: string;
@@ -106,7 +116,7 @@ export interface CapitalFlow {
   history: CapitalFlowPoint[];
 }
 
-// ── 基本面 ───────────────────────────────────────────────────────────────────
+// ── 基本面 ───────────────────────────────────────────────
 
 export interface Fundamental {
   pe: number | null;
@@ -116,7 +126,7 @@ export interface Fundamental {
   gross_margin: number | null;
 }
 
-// ── 完整响应 ─────────────────────────────────────────────────────────────────
+// ── 完整响应 ─────────────────────────────────────────────
 
 export interface StockAnalysisResponse {
   symbol: string;
@@ -126,11 +136,96 @@ export interface StockAnalysisResponse {
   signal: string;
   score: number;
   reasons: string[];
-  // 新增多维度分析字段（可能为 null，表示获取失败或未配置）
   fundamental?: Fundamental;
   price_targets?: PriceTargets | null;
   industry?: IndustryComparison | null;
   capital_flow?: CapitalFlow | null;
   ai_report?: string | null;
+  error?: string;
+}
+
+// ── 回测 ─────────────────────────────────────────────────
+
+export interface BacktestTrade {
+  date: string;
+  action: 'BUY' | 'SELL';
+  shares: number;
+  price: number;
+  cost?: number;
+  revenue?: number;
+  profit?: number;
+}
+
+export interface BacktestPortfolioPoint {
+  date: string;
+  cash: number;
+  shares: number;
+  close_price: number;
+  portfolio_value: number;
+}
+
+export interface BacktestResult {
+  symbol: string;
+  start_date: string;
+  end_date: string;
+  initial_capital: number;
+  final_capital: number;
+  total_return: number;
+  annualized_return: number;
+  max_drawdown: number;
+  sharpe_ratio: number;
+  win_rate: number;
+  total_trades: number;
+  trades: BacktestTrade[];
+  portfolio_history: BacktestPortfolioPoint[];
+  error?: string;
+}
+
+// ── 自选股 ───────────────────────────────────────────────
+
+export interface WatchlistItem {
+  symbol: string;
+  name: string;
+  added_at: string;
+}
+
+// ── 分析历史 ─────────────────────────────────────────────
+
+export interface HistoryRecord {
+  id: number;
+  symbol: string;
+  name: string;
+  signal: string;
+  score: number;
+  price: number;
+  created_at: string;
+}
+
+// ── 告警 ─────────────────────────────────────────────────
+
+export interface AlertItem {
+  id: string;
+  symbol: string;
+  target_price: number;
+  direction: string;
+  note: string | null;
+  triggered: number;
+  created_at: string;
+}
+
+// ── 组合分析 ─────────────────────────────────────────────
+
+export interface PortfolioResult {
+  symbols: string[];
+  stock_info: Record<string, any>;
+  correlation: Record<string, Record<string, number>>;
+  individual_stats: Record<string, any>;
+  equal_weight_portfolio: {
+    annualized_return: number;
+    annualized_volatility: number;
+    sharpe_ratio: number;
+    total_return: number;
+  };
+  return_curves: any[];
   error?: string;
 }

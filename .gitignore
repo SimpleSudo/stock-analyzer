@@ -35,6 +35,13 @@ continuous_test.log
 simple_test.py
 test_loop.py
 
+# SQLite 数据库（运行时生成）
+backend/db/
+*.db
+
+# pytest 缓存
+.pytest_cache/
+
 # Node.js
 node_modules/
 frontend/node_modules/
@@ -43,3 +50,11 @@ frontend/node_modules/
 dist/
 build/
 frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+
+# 一键启动脚本运行时文件
+.pids/
+logs/

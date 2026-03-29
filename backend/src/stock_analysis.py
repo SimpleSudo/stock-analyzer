@@ -71,6 +71,38 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["bb_upper"] = df["bb_mid"] + 2 * bb_std
     df["bb_lower"] = df["bb_mid"] - 2 * bb_std
 
+    # KDJ（随机指标，9/3/3）
+    low_9  = df["low"].rolling(window=9).min()
+    high_9 = df["high"].rolling(window=9).max()
+    rsv = (df["close"] - low_9) / (high_9 - low_9) * 100
+    rsv = rsv.fillna(50)
+    df["kdj_k"] = rsv.ewm(com=2, adjust=False).mean()
+    df["kdj_d"] = df["kdj_k"].ewm(com=2, adjust=False).mean()
+    df["kdj_j"] = 3 * df["kdj_k"] - 2 * df["kdj_d"]
+
+    # WR（威廉指标，14日）
+    high_14 = df["high"].rolling(window=14).max()
+    low_14  = df["low"].rolling(window=14).min()
+    df["wr"] = (high_14 - df["close"]) / (high_14 - low_14) * (-100)
+
+    # OBV（能量潮）
+    obv = [0]
+    for i in range(1, len(df)):
+        if df["close"].iloc[i] > df["close"].iloc[i - 1]:
+            obv.append(obv[-1] + df["volume"].iloc[i])
+        elif df["close"].iloc[i] < df["close"].iloc[i - 1]:
+            obv.append(obv[-1] - df["volume"].iloc[i])
+        else:
+            obv.append(obv[-1])
+    df["obv"] = obv
+
+    # ATR（真实波动幅度，14日）
+    tr1 = df["high"] - df["low"]
+    tr2 = (df["high"] - df["close"].shift(1)).abs()
+    tr3 = (df["low"] - df["close"].shift(1)).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    df["atr"] = tr.rolling(window=14).mean()
+
     return df
 
 
@@ -132,6 +164,33 @@ def generate_signal(df: pd.DataFrame) -> Tuple[str, int, List[str]]:
         else:
             score -= 1
             reasons.append(f"价格在 MA60({latest['ma60']:.2f}) 之下，长期趋势向下")
+
+    # KDJ
+    if pd.notna(latest.get("kdj_k")) and pd.notna(latest.get("kdj_d")):
+        k, d, j = latest["kdj_k"], latest["kdj_d"], latest.get("kdj_j", 50)
+        if k < 20 and d < 20:
+            score += 1
+            reasons.append(f"KDJ 超卖区（K={k:.1f}, D={d:.1f}）")
+        elif k > 80 and d > 80:
+            score -= 1
+            reasons.append(f"KDJ 超买区（K={k:.1f}, D={d:.1f}）")
+        if pd.notna(prev.get("kdj_k")) and pd.notna(prev.get("kdj_d")):
+            if k > d and prev["kdj_k"] <= prev["kdj_d"] and k < 50:
+                score += 1
+                reasons.append("KDJ 低位金叉")
+            elif k < d and prev["kdj_k"] >= prev["kdj_d"] and k > 50:
+                score -= 1
+                reasons.append("KDJ 高位死叉")
+
+    # WR 威廉指标
+    if pd.notna(latest.get("wr")):
+        wr = latest["wr"]
+        if wr < -80:
+            score += 1
+            reasons.append(f"WR={wr:.1f}，超卖区间")
+        elif wr > -20:
+            score -= 1
+            reasons.append(f"WR={wr:.1f}，超买区间")
 
     # 成交量放大
     if "volume" in df.columns:
@@ -218,6 +277,16 @@ def get_analysis(symbol: str) -> Dict:
             "bb_upper":  _round_or_none(row.get("bb_upper")),
             "bb_mid":    _round_or_none(row.get("bb_mid")),
             "bb_lower":  _round_or_none(row.get("bb_lower")),
+            # KDJ
+            "kdj_k":     _round_or_none(row.get("kdj_k")),
+            "kdj_d":     _round_or_none(row.get("kdj_d")),
+            "kdj_j":     _round_or_none(row.get("kdj_j")),
+            # WR
+            "wr":        _round_or_none(row.get("wr")),
+            # OBV
+            "obv":       int(row["obv"]) if pd.notna(row.get("obv")) else None,
+            # ATR
+            "atr":       _round_or_none(row.get("atr")),
         })
 
     # 兼容旧格式 chart 字段（只含 OHLCV）

@@ -1,22 +1,34 @@
+"""
+回测引擎 - 基于技术指标信号的策略回测
+- 使用滚动窗口分析，消除前瞻偏差
+- 支持手续费和滑点模拟
+- 配对交易计算盈亏和胜率
+"""
+import logging
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
-import akshare as ak
 
-# Import our agents and committee
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from agents.technical_agent import TechnicalAgent
-from agents.fundamental_agent import FundamentalAgent
-from agents.decision_committee import DecisionCommittee
-from tools.toolkit import Toolkit
+
+from data.provider_factory import get_history_with_fallback
+from backtest.metrics import calculate_sharpe_ratio, calculate_max_drawdown
+
+logger = logging.getLogger(__name__)
+
 
 class BacktestEngine:
-    def __init__(self, initial_capital: float = 100000.0, commission: float = 0.0003, slippage: float = 0.001):
+    def __init__(
+        self,
+        initial_capital: float = 100000.0,
+        commission: float = 0.0003,
+        slippage: float = 0.001,
+    ):
         """
-        Initialize backtest engine.
+        初始化回测引擎。
         :param initial_capital: 初始资金
         :param commission: 手续费率（单边）
         :param slippage: 滑点率
@@ -24,239 +36,215 @@ class BacktestEngine:
         self.initial_capital = initial_capital
         self.commission = commission
         self.slippage = slippage
-        
-        # Initialize agents and committee (same as in main)
-        toolkit = Toolkit()
-        technical_agent = TechnicalAgent(toolkit=toolkit)
-        fundamental_agent = FundamentalAgent(toolkit=toolkit)
-        self.committee = DecisionCommittee(
-            agents=[technical_agent, fundamental_agent],
-            weights={"Technical": 0.6, "Fundamental": 0.4}
-        )
-    
-    def fetch_historical_data(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """
-        Fetch historical daily data for backtesting period.
-        :param symbol: 股票代码
-        :param start_date: 开始日期 'YYYYMMDD'
-        :param end_date: 结束日期 'YYYYMMDD'
-        :return: 包含OHLCV的DataFrame
-        """
+
+    # ── 数据获取 ──────────────────────────────────────────
+
+    def fetch_historical_data(
+        self, symbol: str, start_date: str, end_date: str
+    ) -> pd.DataFrame:
+        """获取历史日线数据（使用 provider_factory 的故障转移机制）"""
         try:
-            df = ak.stock_zh_a_hist(symbol=symbol, period="daily", 
-                                    start_date=start_date, end_date=end_date, adjust="")
-            if df.empty:
-                return pd.DataFrame()
-            # Rename columns
-            df = df.rename(columns={
-                "日期": "date",
-                "开盘": "open",
-                "收盘": "close",
-                "最高": "high",
-                "最低": "low",
-                "成交量": "volume",
-                "成交额": "amount"
-            })
-            df['date'] = pd.to_datetime(df['date'])
-            df.set_index('date', inplace=True)
-            # Ensure we have required columns
-            required = ['open', 'high', 'low', 'close', 'volume']
-            if not all(col in df.columns for col in required):
-                # If missing, try to compute from available
-                pass
+            df, _ = get_history_with_fallback(symbol, start_date, end_date)
             return df
         except Exception as e:
-            print(f"Error fetching historical data for {symbol}: {e}")
+            logger.error("获取历史数据失败 [%s]: %s", symbol, e)
             return pd.DataFrame()
-    
+
+    # ── 滚动窗口信号生成（消除前瞻偏差）──────────────────
+
+    @staticmethod
+    def _rolling_signal(historical_slice: pd.DataFrame) -> str:
+        """
+        基于截至当日的历史数据生成交易信号。
+        仅使用 MA 交叉 + RSI + MACD，不使用未来数据。
+        """
+        if len(historical_slice) < 60:
+            return "HOLD"
+
+        close = historical_slice["close"]
+
+        # MA 交叉
+        ma5 = close.rolling(5).mean()
+        ma10 = close.rolling(10).mean()
+        ma20 = close.rolling(20).mean()
+
+        ma5_now, ma5_prev = ma5.iloc[-1], ma5.iloc[-2]
+        ma10_now, ma10_prev = ma10.iloc[-1], ma10.iloc[-2]
+
+        score = 0
+
+        # MA5/MA10 金叉/死叉
+        if ma5_now > ma10_now and ma5_prev <= ma10_prev:
+            score += 2
+        elif ma5_now < ma10_now and ma5_prev >= ma10_prev:
+            score -= 2
+
+        # RSI
+        delta = close.diff()
+        up = delta.clip(lower=0).rolling(14).mean()
+        down = (-delta.clip(upper=0)).rolling(14).mean()
+        rs = up.iloc[-1] / down.iloc[-1] if down.iloc[-1] != 0 else 0
+        rsi = 100 - (100 / (1 + rs)) if rs != 0 else 50
+
+        if rsi < 30:
+            score += 2
+        elif rsi > 70:
+            score -= 2
+
+        # MACD
+        exp12 = close.ewm(span=12, adjust=False).mean()
+        exp26 = close.ewm(span=26, adjust=False).mean()
+        macd = exp12 - exp26
+        signal_line = macd.ewm(span=9, adjust=False).mean()
+
+        if macd.iloc[-1] > signal_line.iloc[-1] and macd.iloc[-2] <= signal_line.iloc[-2]:
+            score += 2
+        elif macd.iloc[-1] < signal_line.iloc[-1] and macd.iloc[-2] >= signal_line.iloc[-2]:
+            score -= 2
+
+        # 趋势
+        ma60 = close.rolling(60).mean()
+        if pd.notna(ma60.iloc[-1]) and close.iloc[-1] > ma60.iloc[-1]:
+            score += 1
+        elif pd.notna(ma60.iloc[-1]):
+            score -= 1
+
+        if score >= 3:
+            return "BUY"
+        elif score <= -3:
+            return "SELL"
+        return "HOLD"
+
+    # ── 回测主流程 ────────────────────────────────────────
+
     def run_backtest(self, symbol: str, start_date: str, end_date: str) -> Dict:
         """
-        Run backtest for a given symbol and date range.
-        :param symbol: 股票代码
-        :param start_date: 开始日期 'YYYYMMDD'
-        :param end_date: 结束日期 'YYYYMMDD'
+        对指定股票在给定日期范围内进行回测。
         :return: 回测结果字典
         """
-        # Fetch historical data
         df = self.fetch_historical_data(symbol, start_date, end_date)
         if df.empty:
             return {"error": "无法获取历史数据"}
-        
-        # We'll simulate daily trading: at the close of each day, we get signal for next day open
-        # For simplicity, we'll use the close price to decide signal and simulate buying at next open
-        # We'll keep it simple: signal at close t -> execute at open t+1
-        
-        # Initialize portfolio
+
         cash = self.initial_capital
         shares = 0
-        portfolio_value = []  # daily portfolio value
-        trades = []  # list of trades
-        
-        # We need to know the signal for each day. We'll compute signal using our committee
-        # but note: our committee uses get_analysis which fetches recent data (maybe up to 1 year).
-        # For backtesting, we want to use only data up to that point to avoid lookahead bias.
-        # We'll create a mock get_analysis that uses only historical data up to current date.
-        # For simplicity, we'll just use the same get_analysis but with a limited date range?
-        # Since get_analysis fetches from 2024-01-01 to now, if our backtest period is within that,
-        # it's okay but still uses future data? Actually get_analysis fetches fixed start date.
-        # To avoid lookahead, we need to modify the agent to only use data up to current date.
-        # Given time, we'll approximate by using the same analysis but note this is a limitation.
-        
-        # We'll iterate through each day (except last day because we need next day open)
+        portfolio_history: List[Dict] = []
+        trades: List[Dict] = []
+        last_buy_price: Optional[float] = None
+
         dates = df.index
         for i in range(len(dates) - 1):
             current_date = dates[i]
             next_date = dates[i + 1]
-            
-            # Get data up to current date for analysis
+
+            # 滚动窗口：仅使用截至当前日期的数据
             historical_slice = df.loc[:current_date]
-            # We need to feed this slice into our analysis function.
-            # Instead of modifying the agent, we'll create a temporary function that uses this slice.
-            # For simplicity, we'll skip the signal generation and just use a placeholder.
-            # But we want to demonstrate the engine, so we'll implement a simple signal based on MA crossover
-            # using only historical_slice.
-            
-            # Simple MA crossover signal for demonstration (can be replaced with committee later)
-            if len(historical_slice) >= 60:
-                close_series = historical_slice['close']
-                ma5 = close_series.rolling(5).mean().iloc[-1]
-                ma10 = close_series.rolling(10).mean().iloc[-1]
-                prev_ma5 = close_series.rolling(5).mean().iloc[-2] if len(historical_slice) >= 2 else ma5
-                prev_ma10 = close_series.rolling(10).mean().iloc[-2] if len(historical_slice) >= 2 else ma10
-                
-                if ma5 > ma10 and prev_ma5 <= prev_ma10:
-                    signal = "BUY"
-                elif ma5 < ma10 and prev_ma5 >= prev_ma10:
-                    signal = "SELL"
-                else:
-                    signal = "HOLD"
-            else:
-                signal = "HOLD"
-            
-            # Execute trade at next day's open price (with slippage)
-            open_price = df.loc[next_date, 'open']
-            # Apply slippage: if buying, price slightly higher; if selling, price slightly lower
-            if signal == "BUY":
+            signal = self._rolling_signal(historical_slice)
+
+            open_price = df.loc[next_date, "open"]
+
+            if signal == "BUY" and shares == 0:
                 price = open_price * (1 + self.slippage)
-                # Calculate max shares we can buy with cash
-                max_shares = cash // (price * (1 + self.commission))  # commission on buy
+                max_shares = int(cash // (price * (1 + self.commission)))
+                # A 股买入按 100 股整手
+                max_shares = (max_shares // 100) * 100
                 if max_shares > 0:
-                    shares_to_buy = max_shares
-                    cost = shares_to_buy * price * (1 + self.commission)
-                    if cost <= cash:
-                        shares += shares_to_buy
-                        cash -= cost
-                        trades.append({
-                            'date': next_date.strftime('%Y-%m-%d'),
-                            'action': 'BUY',
-                            'shares': shares_to_buy,
-                            'price': price,
-                            'cost': cost
-                        })
+                    cost = max_shares * price * (1 + self.commission)
+                    shares = max_shares
+                    cash -= cost
+                    last_buy_price = price
+                    trades.append({
+                        "date": next_date.strftime("%Y-%m-%d"),
+                        "action": "BUY",
+                        "shares": max_shares,
+                        "price": round(price, 4),
+                        "cost": round(cost, 2),
+                    })
+
             elif signal == "SELL" and shares > 0:
                 price = open_price * (1 - self.slippage)
-                # Sell all shares
-                shares_to_sell = shares
-                revenue = shares_to_sell * price * (1 - self.commission)
-                cash += revenue
+                revenue = shares * price * (1 - self.commission)
+                profit = revenue - (last_buy_price or price) * shares * (1 + self.commission)
                 trades.append({
-                    'date': next_date.strftime('%Y-%m-%d'),
-                    'action': 'SELL',
-                    'shares': shares_to_sell,
-                    'price': price,
-                    'revenue': revenue
+                    "date": next_date.strftime("%Y-%m-%d"),
+                    "action": "SELL",
+                    "shares": shares,
+                    "price": round(price, 4),
+                    "revenue": round(revenue, 2),
+                    "profit": round(profit, 2),
                 })
+                cash += revenue
                 shares = 0
-            
-            # Calculate portfolio value at close of current date (or next day open?)
-            # We'll use close of current date for marking to market
-            close_price = df.loc[current_date, 'close']
-            portfolio_value = cash + shares * close_price
-            portfolio_value.append({
-                'date': current_date.strftime('%Y-%m-%d'),
-                'cash': cash,
-                'shares': shares,
-                'close_price': close_price,
-                'portfolio_value': portfolio_value
+                last_buy_price = None
+
+            # 每日市值记录
+            close_price = df.loc[current_date, "close"]
+            total_value = cash + shares * close_price
+            portfolio_history.append({
+                "date": current_date.strftime("%Y-%m-%d"),
+                "cash": round(cash, 2),
+                "shares": shares,
+                "close_price": round(close_price, 4),
+                "portfolio_value": round(total_value, 2),
             })
-        
-        # After loop, if we still hold shares, sell at last close
+
+        # 回测结束时仍持股则按最后收盘价平仓
         if shares > 0:
             last_date = dates[-1]
-            close_price = df.loc[last_date, 'close']
+            close_price = df.loc[last_date, "close"]
             price = close_price * (1 - self.slippage)
             revenue = shares * price * (1 - self.commission)
-            cash += revenue
+            profit = revenue - (last_buy_price or price) * shares * (1 + self.commission)
             trades.append({
-                'date': last_date.strftime('%Y-%m-%d'),
-                'action': 'SELL',
-                'shares': shares,
-                'price': price,
-                'revenue': revenue
+                "date": last_date.strftime("%Y-%m-%d"),
+                "action": "SELL",
+                "shares": shares,
+                "price": round(price, 4),
+                "revenue": round(revenue, 2),
+                "profit": round(profit, 2),
             })
+            cash += revenue
             shares = 0
-        
-        # Calculate performance metrics
-        if len(portfolio_value) > 0:
-            initial = self.initial_capital
-            final = portfolio_value[-1]['portfolio_value']
-            total_return = (final - initial) / initial
-            # Annualized return (approx)
-            days = (datetime.strptime(end_date, '%Y%m%d') - datetime.strptime(start_date, '%Y%m%d')).days
-            if days > 0:
-                annualized_return = (1 + total_return) ** (365 / days) - 1
-            else:
-                annualized_return = 0
-            
-            # Calculate max drawdown
-            peak = initial
-            max_drawdown = 0
-            for pv in portfolio_value:
-                val = pv['portfolio_value']
-                if val > peak:
-                    peak = val
-                drawdown = (peak - val) / peak
-                if drawdown > max_drawdown:
-                    max_drawdown = drawdown
-            
-            # Sharpe ratio (simplified, assuming risk-free rate 0)
-            if len(portfolio_value) > 1:
-                returns = []
-                for i in range(1, len(portfolio_value)):
-                    prev_val = portfolio_value[i-1]['portfolio_value']
-                    curr_val = portfolio_value[i]['portfolio_value']
-                    daily_return = (curr_val - prev_val) / prev_val
-                    returns.append(daily_return)
-                if returns:
-                    avg_return = np.mean(returns)
-                    std_return = np.std(returns)
-                    if std_return > 0:
-                        sharpe = (avg_return / std_return) * np.sqrt(252)  # annualized
-                    else:
-                        sharpe = 0
-                else:
-                    sharpe = 0
-            else:
-                sharpe = 0
-            
-            win_trades = [t for t in trades if t['action'] == 'SELL' and t.get('profit', 0) > 0]
-            total_sell_trades = [t for t in trades if t['action'] == 'SELL']
-            win_rate = len(win_trades) / len(total_sell_trades) if total_sell_trades else 0
-            
-            return {
-                "symbol": symbol,
-                "start_date": start_date,
-                "end_date": end_date,
-                "initial_capital": initial_capital,
-                "final_capital": cash,
-                "total_return": total_return,
-                "annualized_return": annualized_return,
-                "max_drawdown": max_drawdown,
-                "sharpe_ratio": sharpe,
-                "win_rate": win_rate,
-                "total_trades": len(trades),
-                "trades": trades,
-                "portfolio_history": portfolio_value
-            }
+
+        # ── 绩效计算 ─────────────────────────────────────
+        if not portfolio_history:
+            return {"error": "无法计算绩效（无交易日数据）"}
+
+        initial = self.initial_capital
+        final = cash
+        total_return = (final - initial) / initial
+
+        days = (datetime.strptime(end_date, "%Y%m%d") - datetime.strptime(start_date, "%Y%m%d")).days
+        annualized_return = (1 + total_return) ** (365 / max(days, 1)) - 1
+
+        # 最大回撤
+        pv_list = [p["portfolio_value"] for p in portfolio_history]
+        max_drawdown = calculate_max_drawdown(pv_list)
+
+        # 夏普比率
+        if len(pv_list) > 1:
+            daily_returns = [(pv_list[i] - pv_list[i - 1]) / pv_list[i - 1] for i in range(1, len(pv_list))]
+            sharpe = calculate_sharpe_ratio(daily_returns)
         else:
-            return {"error": "无法计算绩效"}
+            sharpe = 0.0
+
+        # 胜率（配对买卖计算）
+        sell_trades = [t for t in trades if t["action"] == "SELL"]
+        win_trades = [t for t in sell_trades if t.get("profit", 0) > 0]
+        win_rate = len(win_trades) / len(sell_trades) if sell_trades else 0.0
+
+        return {
+            "symbol": symbol,
+            "start_date": start_date,
+            "end_date": end_date,
+            "initial_capital": self.initial_capital,
+            "final_capital": round(final, 2),
+            "total_return": round(total_return, 4),
+            "annualized_return": round(annualized_return, 4),
+            "max_drawdown": round(max_drawdown, 4),
+            "sharpe_ratio": round(sharpe, 4),
+            "win_rate": round(win_rate, 4),
+            "total_trades": len(trades),
+            "trades": trades,
+            "portfolio_history": portfolio_history,
+        }

@@ -204,3 +204,76 @@ def generate_analysis_report(
             return f"[AI 报告生成失败：{e}]"
 
     return None
+
+
+# ══════════════════════════════════════════════════════════
+#  AI 对话式分析
+# ══════════════════════════════════════════════════════════
+
+def _build_chat_response(
+    question: str,
+    symbol: Optional[str] = None,
+    context: Optional[dict] = None,
+) -> str:
+    """
+    基于用户问题和上下文，调用 LLM 生成对话式回答。
+    """
+    provider = os.getenv("LLM_PROVIDER", "anthropic").lower()
+
+    system_msg = """你是一位专业的 A 股分析师助手。请基于用户提供的上下文数据回答问题。
+要求：
+1. 语言专业简洁，使用中文
+2. 每个判断必须有数据支撑
+3. 如果上下文数据不足，明确说明
+4. 始终提醒用户投资有风险"""
+
+    context_text = ""
+    if context:
+        import json
+        context_text = f"\n\n## 当前分析上下文\n```json\n{json.dumps(context, ensure_ascii=False, indent=2)[:3000]}\n```"
+
+    if symbol:
+        user_msg = f"关于股票 {symbol}：{question}{context_text}"
+    else:
+        user_msg = f"{question}{context_text}"
+
+    if provider == "anthropic":
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            return "AI 助手暂不可用（未配置 ANTHROPIC_API_KEY）"
+        try:
+            import anthropic
+            model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20251001")
+            client = anthropic.Anthropic(api_key=api_key)
+            message = client.messages.create(
+                model=model,
+                max_tokens=1024,
+                system=system_msg,
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            return message.content[0].text
+        except Exception as e:
+            return f"AI 回答生成失败：{e}"
+
+    if provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return "AI 助手暂不可用（未配置 OPENAI_API_KEY）"
+        try:
+            from openai import OpenAI
+            model = os.getenv("OPENAI_MODEL", "gpt-4o")
+            base_url = os.getenv("OPENAI_BASE_URL")
+            client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model=model,
+                max_tokens=1024,
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg},
+                ],
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"AI 回答生成失败：{e}"
+
+    return "AI 助手暂不可用（未配置 LLM_PROVIDER）"
