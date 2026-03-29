@@ -110,6 +110,57 @@ export const deleteAlert = async (alertId: string) => {
   return response.data;
 };
 
+// ── AI 流式对话（SSE）─────────────────────────────────────
+export const streamAIChat = async (
+  question: string,
+  onToken: (token: string) => void,
+  onDone: () => void,
+  onError: (err: string) => void,
+  symbol?: string,
+  context?: any,
+) => {
+  const body = JSON.stringify({
+    question,
+    symbol: symbol ? cleanCode(symbol) : undefined,
+    context,
+  });
+  try {
+    const response = await fetch('/api/v1/ai/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    if (!response.ok || !response.body) {
+      onError('请求失败');
+      return;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.token) onToken(data.token);
+            if (data.done) onDone();
+            if (data.error) onError(data.error);
+          } catch { /* ignore */ }
+        }
+      }
+    }
+    onDone();
+  } catch (e: any) {
+    onError(e.message || 'SSE 连接失败');
+  }
+};
+
 // ── 搜索 ─────────────────────────────────────────────────
 export const searchStocks = async (q: string) => {
   const response = await api.get('/api/search', { params: { q } });

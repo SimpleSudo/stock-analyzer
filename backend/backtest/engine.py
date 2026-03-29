@@ -57,11 +57,12 @@ class BacktestEngine:
         """
         基于截至当日的历史数据生成交易信号。
         仅使用 MA 交叉 + RSI + MACD，不使用未来数据。
+        使用独立副本避免 ewm 状态泄漏。
         """
         if len(historical_slice) < 60:
             return "HOLD"
 
-        close = historical_slice["close"]
+        close = historical_slice["close"].copy()
 
         # MA 交叉
         ma5 = close.rolling(5).mean()

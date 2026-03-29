@@ -7,16 +7,22 @@
 import akshare as ak
 import pandas as pd
 from typing import Optional
+from utils.cache import stock_data_cache
 
 
 def get_capital_flow(symbol: str, days: int = 10) -> Optional[dict]:
     """
-    获取个股近 N 日主力资金净流向。
+    获取个股近 N 日主力资金净流向（缓存 10 分钟）。
 
     :param symbol: 6位股票代码
     :param days: 取近多少个交易日（默认10）
     :return: 资金流向结果字典，获取失败返回 None
     """
+    cache_key = f"capflow:{symbol}:{days}"
+    cached = stock_data_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         market = "sh" if symbol.startswith("6") or symbol.startswith("9") else "sz"
         df = ak.stock_individual_fund_flow(stock=symbol, market=market)
@@ -85,7 +91,7 @@ def get_capital_flow(symbol: str, days: int = 10) -> Optional[dict]:
         else:
             retail_vs_main = "资金流向中性"
 
-        return {
+        result = {
             "today_main_net": round(today_main, 2),
             "five_day_main_net": round(five_day_main, 2),
             "ten_day_main_net": round(ten_day_main, 2),
@@ -94,6 +100,8 @@ def get_capital_flow(symbol: str, days: int = 10) -> Optional[dict]:
             "retail_vs_main": retail_vs_main,
             "history": history,
         }
+        stock_data_cache.set(cache_key, result, ttl=600)
+        return result
 
     except Exception as e:
         # 资金流向获取失败不影响主流程

@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 
 from data.provider_factory import get_history_with_fallback
 from data.base_provider import DataProviderError
+from utils.cache import stock_data_cache, fundamental_cache
 from .price_targets import calculate_price_targets
 from .industry_analysis import get_industry_comparison
 from .capital_flow import get_capital_flow
@@ -26,14 +27,21 @@ from .llm_reporter import generate_analysis_report
 
 def get_stock_data(symbol: str) -> Tuple[pd.DataFrame, str]:
     """
-    获取历史行情数据（自动故障转移）。
+    获取历史行情数据（自动故障转移 + TTL 缓存）。
 
     :return: (df, provider_name)
     :raises DataProviderError: 所有数据源均失败时抛出
     """
+    cache_key = f"hist:{symbol}"
+    cached = stock_data_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     start_date = "20240101"
     end_date = datetime.now().strftime("%Y%m%d")
-    return get_history_with_fallback(symbol, start_date, end_date)
+    result = get_history_with_fallback(symbol, start_date, end_date)
+    stock_data_cache.set(cache_key, result, ttl=300)
+    return result
 
 
 def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -337,8 +345,13 @@ def get_analysis(symbol: str) -> Dict:
 def _get_fundamental_data(symbol: str) -> dict:
     """
     获取股票基本面数据：PE(TTM)、PB、ROE、资产负债率、毛利率、股票名称。
-    全部失败时返回空字典（不影响主流程）。
+    全部失败时返回空字典（不影响主流程）。结果缓存 1 小时。
     """
+    cache_key = f"fund:{symbol}"
+    cached = fundamental_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     result: dict = {}
 
     # ── 股票名称 ────────────────────────────────────────
@@ -398,6 +411,7 @@ def _get_fundamental_data(symbol: str) -> dict:
     except Exception:
         pass
 
+    fundamental_cache.set(cache_key, result, ttl=3600)
     return result
 
 

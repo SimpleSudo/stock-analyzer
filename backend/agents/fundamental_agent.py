@@ -5,6 +5,7 @@
 """
 import logging
 from .base_agent import BaseAgent
+from utils.cache import fundamental_cache
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +157,12 @@ class FundamentalAgent(BaseAgent):
         return analysis_output
 
     def _fetch_fundamental(self, symbol: str) -> dict:
-        """获取基本面数据，优先使用 Toolkit，失败回退到 AKShare 直接调用"""
+        """获取基本面数据（缓存 1 小时），优先使用 Toolkit，失败回退到 AKShare 直接调用"""
+        cache_key = f"agent_fund:{symbol}"
+        cached = fundamental_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         import akshare as ak
         import pandas as pd
 
@@ -217,4 +223,5 @@ class FundamentalAgent(BaseAgent):
         except Exception:
             pass
 
+        fundamental_cache.set(cache_key, result, ttl=3600)
         return result

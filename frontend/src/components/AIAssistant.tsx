@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { StockAnalysisResponse } from '../utils/types';
-import { aiChat } from '../services/api';
+import { streamAIChat, aiChat } from '../services/api';
 
 interface AIAssistantProps {
   analysis: StockAnalysisResponse | null;
@@ -11,6 +11,7 @@ interface AIAssistantProps {
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  streaming?: boolean;
 }
 
 const AIAssistant: React.FC<AIAssistantProps> = ({ analysis, show, onClose }) => {
@@ -23,7 +24,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ analysis, show, onClose }) =>
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 重置对话当分析目标改变
   useEffect(() => {
     if (analysis) {
       setMessages([{
@@ -32,6 +32,19 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ analysis, show, onClose }) =>
       }]);
     }
   }, [analysis?.symbol]);
+
+  const buildContext = useCallback(() => {
+    if (!analysis) return undefined;
+    return {
+      signal: analysis.signal,
+      score: analysis.score,
+      reasons: analysis.reasons,
+      indicators: analysis.indicators,
+      fundamental: analysis.fundamental,
+      price: analysis.data?.latest?.price,
+      change_pct: analysis.data?.latest?.change_pct,
+    };
+  }, [analysis]);
 
   if (!show || !analysis) return null;
 
@@ -43,22 +56,71 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ analysis, show, onClose }) =>
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setLoading(true);
 
+    const context = buildContext();
+
+    // 先尝试 SSE 流式，失败降级到普通请求
+    const assistantIdx = messages.length + 1; // +1 for user msg just added
+    setMessages(prev => [...prev, { role: 'assistant', content: '', streaming: true }]);
+
     try {
-      const context = {
-        signal: analysis.signal,
-        score: analysis.score,
-        reasons: analysis.reasons,
-        indicators: analysis.indicators,
-        fundamental: analysis.fundamental,
-        price: analysis.data?.latest?.price,
-        change_pct: analysis.data?.latest?.change_pct,
-      };
-      const reply = await aiChat(userMsg, analysis.symbol, context);
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      await streamAIChat(
+        userMsg,
+        (token) => {
+          setMessages(prev => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === 'assistant') {
+              updated[updated.length - 1] = { ...last, content: last.content + token };
+            }
+            return updated;
+          });
+        },
+        () => {
+          setMessages(prev => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === 'assistant') {
+              updated[updated.length - 1] = { ...last, streaming: false };
+            }
+            return updated;
+          });
+          setLoading(false);
+        },
+        async (err) => {
+          // SSE 失败，降级到普通请求
+          try {
+            const reply = await aiChat(userMsg, analysis.symbol, context);
+            setMessages(prev => {
+              const updated = [...prev];
+              updated[updated.length - 1] = { role: 'assistant', content: reply };
+              return updated;
+            });
+          } catch {
+            setMessages(prev => {
+              const updated = [...prev];
+              updated[updated.length - 1] = {
+                role: 'assistant',
+                content: '抱歉，AI 回答暂时不可用，请稍后再试。',
+              };
+              return updated;
+            });
+          }
+          setLoading(false);
+        },
+        analysis.symbol,
+        context,
+      );
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，AI 回答暂时不可用，请稍后再试。' }]);
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          role: 'assistant',
+          content: '抱歉，AI 回答暂时不可用，请稍后再试。',
+        };
+        return updated;
+      });
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -76,7 +138,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ analysis, show, onClose }) =>
           <button className="ai-assistant-close" onClick={onClose}>×</button>
         </div>
 
-        {/* 消息列表 */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', minHeight: '200px' }}>
           {messages.map((msg, i) => (
             <div key={i} style={{
@@ -95,10 +156,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ analysis, show, onClose }) =>
                 whiteSpace: 'pre-wrap',
               }}>
                 {msg.content}
+                {msg.streaming && <span className="typing-cursor">▊</span>}
               </div>
             </div>
           ))}
-          {loading && (
+          {loading && messages[messages.length - 1]?.content === '' && (
             <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '12px' }}>
               <div style={{
                 padding: '10px 14px', borderRadius: '14px 14px 14px 4px',
@@ -111,7 +173,6 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ analysis, show, onClose }) =>
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 输入区 */}
         <div style={{
           padding: '12px 16px',
           borderTop: '1px solid var(--border-color)',

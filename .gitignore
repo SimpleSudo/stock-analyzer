@@ -58,3 +58,8 @@ frontend/dist/
 # 一键启动脚本运行时文件
 .pids/
 logs/
+
+# 模型检查点（训练生成）
+backend/models/checkpoints/
+*.pt
+*.bin

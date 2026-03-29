@@ -35,15 +35,19 @@ from .symbol_resolver import resolve_symbol, search_stocks, preload_stock_list, 
 from agents.technical_agent import TechnicalAgent
 from agents.fundamental_agent import FundamentalAgent
 from agents.sentiment_agent import SentimentAgent
+from agents.macro_agent import MacroAgent
 from agents.decision_committee import DecisionCommittee
 from tools.toolkit import Toolkit
 from backtest.engine import BacktestEngine
 from data.history_store import HistoryStore
 from data.watchlist_store import WatchlistStore
+from alerts.alert_manager import alert_manager
+from auth.router import router as auth_router
 
 # ── FastAPI App ──────────────────────────────────────────
 
 app = FastAPI(title="A股分析系统 API", version="2.0.0")
+app.include_router(auth_router)
 
 # CORS
 _cors_origins = os.getenv(
@@ -64,9 +68,10 @@ toolkit = Toolkit()
 technical_agent = TechnicalAgent(toolkit=toolkit)
 fundamental_agent = FundamentalAgent(toolkit=toolkit)
 sentiment_agent = SentimentAgent(toolkit=toolkit)
+macro_agent = MacroAgent(toolkit=toolkit)
 committee = DecisionCommittee(
-    agents=[technical_agent, fundamental_agent, sentiment_agent],
-    weights={"Technical": 0.5, "Fundamental": 0.3, "Sentiment": 0.2},
+    agents=[technical_agent, fundamental_agent, sentiment_agent, macro_agent],
+    weights={"Technical": 0.45, "Fundamental": 0.25, "Sentiment": 0.15, "Macro": 0.15},
 )
 backtest_engine = BacktestEngine()
 history_store = HistoryStore()
@@ -353,11 +358,192 @@ async def delete_alert(alert_id: str):
     alert_manager.remove(alert_id)
     return {"status": "ok"}
 
+# ── 告警 SSE 流 ─────────────────────────────────────────
+
+@v1.get("/alerts/stream")
+async def alert_stream():
+    """SSE 端点：推送已触发的告警"""
+    from starlette.responses import StreamingResponse
+
+    async def _event_generator():
+        while True:
+            triggered = alert_manager.pop_triggered()
+            for alert in triggered:
+                yield f"data: {json.dumps(alert, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(5)
+
+    return StreamingResponse(_event_generator(), media_type="text/event-stream")
+
+
+# ── AI 流式对话 ─────────────────────────────────────────
+
+@v1.post("/ai/chat/stream")
+async def ai_chat_stream(request: ChatRequest):
+    """SSE 流式 AI 对话"""
+    from starlette.responses import StreamingResponse
+    from .llm_reporter import _stream_chat_response
+
+    async def _sse_generator():
+        try:
+            for chunk in _stream_chat_response(
+                request.question, request.symbol, request.context
+            ):
+                yield f"data: {json.dumps({'token': chunk}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'done': True})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(_sse_generator(), media_type="text/event-stream")
+
+
+# ── 风险分析 ─────────────────────────────────────────────
+
+@v1.get("/risk/{symbol}")
+async def get_risk(symbol: str):
+    """获取股票风险指标"""
+    from risk.position_sizer import calculate_risk_metrics
+    try:
+        sym = resolve_symbol(symbol)
+        result = await _run_sync(get_full_analysis, sym, None)
+        if "error" in result and result["error"]:
+            raise HTTPException(400, result["error"])
+        # 需要完整 df 数据来计算风险
+        from .stock_analysis import get_stock_data, calculate_indicators
+        df_raw, _ = get_stock_data(sym)
+        df = calculate_indicators(df_raw)
+        risk = calculate_risk_metrics(df)
+        return {"symbol": sym, "risk": risk}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── AI 预测 ─────────────────────────────────────────────
+
+@v1.get("/predict/{symbol}")
+async def predict_stock(symbol: str):
+    """LSTM/启发式价格走势预测"""
+    from models.lstm_predictor import lstm_predictor
+    from .stock_analysis import get_stock_data, calculate_indicators
+    try:
+        sym = resolve_symbol(symbol)
+        df_raw, _ = get_stock_data(sym)
+        df = calculate_indicators(df_raw)
+        prediction = lstm_predictor.predict(df)
+        return {"symbol": sym, "prediction": prediction}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── 形态识别 ─────────────────────────────────────────────
+
+@v1.get("/patterns/{symbol}")
+async def get_patterns(symbol: str):
+    """K 线形态识别"""
+    from patterns.pattern_recognizer import recognize
+    from .stock_analysis import get_stock_data, calculate_indicators
+    try:
+        sym = resolve_symbol(symbol)
+        df_raw, _ = get_stock_data(sym)
+        df = calculate_indicators(df_raw)
+        patterns = recognize(df)
+        return {
+            "symbol": sym,
+            "patterns": [
+                {
+                    "name": p.name,
+                    "direction": p.direction,
+                    "confidence": p.confidence,
+                    "description": p.description,
+                    "target_pct": p.target_pct,
+                }
+                for p in patterns
+            ],
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── 事件驱动回测 ─────────────────────────────────────────
+
+class EventBacktestRequest(BaseModel):
+    symbol: str
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    events: list[str] = ["macd_golden_cross", "volume_breakout"]
+
+@v1.post("/backtest/event")
+async def run_event_backtest(request: EventBacktestRequest):
+    """事件驱动策略回测"""
+    from backtest.event_engine import EventDrivenEngine
+    try:
+        sym = resolve_symbol(request.symbol)
+        end_date = request.end_date or datetime.now().strftime("%Y%m%d")
+        start_date = request.start_date or (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+        engine = EventDrivenEngine()
+        result = await _run_sync(
+            engine.run_event_backtest, sym,
+            start_date.replace("-", ""), end_date.replace("-", ""),
+            request.events,
+        )
+        if "error" in result:
+            raise HTTPException(400, result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── RAG 搜索 ────────────────────────────────────────────
+
+@v1.get("/rag/search")
+async def rag_search(symbol: str = Query(...)):
+    """RAG 检索个股相关文档"""
+    from rag.context_builder import build_analysis_context
+    try:
+        sym = resolve_symbol(symbol)
+        context = await _run_sync(build_analysis_context, sym, None)
+        return {"symbol": sym, "context": context}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── 多因子评估 ──────────────────────────────────────────
+
+@v1.get("/factors/{symbol}")
+async def get_factors(symbol: str):
+    """多因子 Alpha 评估"""
+    from factors.factor_evaluator import evaluate_factors, calculate_composite_score
+    from .stock_analysis import get_stock_data, calculate_indicators
+    try:
+        sym = resolve_symbol(symbol)
+        df_raw, _ = get_stock_data(sym)
+        df = calculate_indicators(df_raw)
+        evaluation = evaluate_factors(df)
+        composite_score = calculate_composite_score(df, evaluation)
+        return {
+            "symbol": sym,
+            "composite_score": composite_score,
+            "factors": evaluation,
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# ── 可用事件列表 ─────────────────────────────────────────
+
+@v1.get("/backtest/events")
+async def list_events():
+    """获取可用的事件触发器列表"""
+    from backtest.events import get_available_events
+    return {"events": get_available_events()}
+
+
 # ── 健康检查 ─────────────────────────────────────────────
 
 @v1.get("/health")
 async def health_check():
-    return {"status": "healthy", "version": "2.0.0"}
+    return {"status": "healthy", "version": "3.0.0"}
 
 
 # ══════════════════════════════════════════════════════════
@@ -418,11 +604,16 @@ app.include_router(compat)
 
 @app.websocket("/ws/realtime/{symbol}")
 async def websocket_realtime(websocket: WebSocket, symbol: str):
-    """WebSocket 实时行情推送（每 5 秒一次）"""
+    """WebSocket 实时行情推送（每 5 秒行情 + 每 15 秒心跳）"""
     await websocket.accept()
     logger.info("WebSocket 连接: %s", symbol)
+    tick_count = 0
     try:
         while True:
+            tick_count += 1
+            # 每 15 秒（3 个 5 秒周期）发送心跳
+            if tick_count % 3 == 0:
+                await websocket.send_json({"type": "ping"})
             try:
                 quote = await _run_sync(toolkit.akshare.get_stock_realtime_quote, symbol)
                 if quote:
@@ -434,6 +625,48 @@ async def websocket_realtime(websocket: WebSocket, symbol: str):
         logger.info("WebSocket 断开: %s", symbol)
     except Exception as e:
         logger.warning("WebSocket 异常: %s", e)
+
+
+# ── 生命周期事件 ─────────────────────────────────────────
+
+@app.on_event("startup")
+async def _on_startup():
+    """启动后台任务：告警检查器（每 30 秒一次）"""
+    async def _alert_checker_loop():
+        import akshare as ak
+        while True:
+            try:
+                pending = alert_manager.get_pending_alerts()
+                if pending:
+                    symbols = list(set(a["symbol"] for a in pending))
+                    price_map = {}
+                    try:
+                        spot_df = await _run_sync(ak.stock_zh_a_spot_em)
+                        if spot_df is not None and not spot_df.empty:
+                            for sym in symbols:
+                                row = spot_df[spot_df["代码"] == sym]
+                                if not row.empty:
+                                    try:
+                                        price_map[sym] = float(row.iloc[0]["最新价"])
+                                    except (TypeError, ValueError):
+                                        pass
+                    except Exception as e:
+                        logger.debug("告警检查获取行情失败: %s", e)
+                    if price_map:
+                        alert_manager.check_and_trigger(price_map)
+            except Exception as e:
+                logger.debug("告警检查器异常: %s", e)
+            await asyncio.sleep(30)
+
+    asyncio.create_task(_alert_checker_loop())
+    logger.info("告警检查后台任务已启动")
+
+@app.on_event("shutdown")
+async def _on_shutdown():
+    """优雅关闭：刷盘向量存储、清理缓存"""
+    from memory.vector_store import vector_store
+    vector_store.flush()
+    logger.info("VectorStore flushed on shutdown")
 
 
 # ── 入口 ─────────────────────────────────────────────────
